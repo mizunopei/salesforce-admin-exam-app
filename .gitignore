@@ -1,3 +1,11 @@
-*.json
-!manifest.json
+.DS_Store
+2023_exam.json
+2024_exam.json
+2025_11_exam.json
+一問一答.json
+過去問0_修正済.json
+2024年度_修正済.json
+2025年度_修正済.json
+data/
 build.py
+functions/_middleware.js

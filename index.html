@@ -52,7 +52,18 @@ function removeWrong(questionId, questionType) {
   saveWrong(loadWrong().filter(w => !(w.questionId === questionId && w.questionType === questionType)));
 }
 
-function isMulti(q) { return Array.isArray(q.correctAnswer); }
+function getRequiredAnswerCount(q) {
+  // Check question text for patterns like "2つ", "3つ", etc.
+  const match = q.question.match(/(\d+)\s*つ/);
+  if (match) return parseInt(match[1], 10);
+  // Fall back to correctAnswer array length
+  if (Array.isArray(q.correctAnswer)) return q.correctAnswer.length;
+  return 1;
+}
+
+function isMulti(q) {
+  return Array.isArray(q.correctAnswer) || getRequiredAnswerCount(q) > 1;
+}
 
 function getOptionLetter(opt) {
   const match = opt.match(/^([A-D])\./);
@@ -129,6 +140,7 @@ function ProgressBar({ current, total }) {
 
 function QuestionView({ q, onAnswer, isTF }) {
   const multi = !isTF && isMulti(q);
+  const requiredCount = !isTF ? getRequiredAnswerCount(q) : 1;
   const [selected, setSelected] = useState(multi ? [] : null);
   const [answered, setAnswered] = useState(false);
   const [correct, setCorrect] = useState(false);
@@ -156,7 +168,7 @@ function QuestionView({ q, onAnswer, isTF }) {
     setAnswered(true);
   };
 
-  const canSubmit = multi ? selected.length > 0 : selected !== null;
+  const canSubmit = multi ? selected.length === requiredCount : selected !== null;
 
   const getOptionClass = (opt) => {
     let base = 'w-full text-left p-3 rounded-lg border-2 transition-all mb-2 white-space-pre-line ';
@@ -178,7 +190,7 @@ function QuestionView({ q, onAnswer, isTF }) {
     <div className="bg-white rounded-xl shadow-sm p-4 sm:p-6 mb-4">
       <div className="flex items-start gap-2 mb-4 flex-wrap">
         <span className="text-sm font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded">Q{q.id}</span>
-        {multi && <span className="text-xs font-bold text-purple-600 bg-purple-50 px-2 py-1 rounded">複数選択</span>}
+        {multi && <span className="text-xs font-bold text-purple-600 bg-purple-50 px-2 py-1 rounded">{requiredCount}つ選択</span>}
         {q.year && <span className="text-xs text-gray-400">{q.year}年度</span>}
       </div>
       <p className="text-gray-800 mb-4 font-medium white-space-pre-line">{q.question}</p>
@@ -188,10 +200,18 @@ function QuestionView({ q, onAnswer, isTF }) {
         ))}
       </div>
       {!answered && (
-        <button onClick={handleSubmit} disabled={!canSubmit}
-          className={`mt-3 w-full py-2.5 rounded-lg font-bold text-white transition-all ${
-            canSubmit ? 'bg-blue-600 hover:bg-blue-700' : 'bg-gray-300 cursor-not-allowed'
-          }`}>解答する</button>
+        <>
+          {multi && (
+            <div className="mt-3 text-center text-sm text-gray-500">
+              {selected.length} / {requiredCount} 選択中
+              {selected.length < requiredCount && <span className="ml-2 text-purple-600">（あと{requiredCount - selected.length}つ選んでください）</span>}
+            </div>
+          )}
+          <button onClick={handleSubmit} disabled={!canSubmit}
+            className={`mt-3 w-full py-2.5 rounded-lg font-bold text-white transition-all ${
+              canSubmit ? 'bg-blue-600 hover:bg-blue-700' : 'bg-gray-300 cursor-not-allowed'
+            }`}>解答する</button>
+        </>
       )}
       {answered && (
         <div className="mt-4">

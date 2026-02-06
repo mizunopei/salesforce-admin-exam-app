@@ -267,16 +267,225 @@ function ResultScreen({ questions, answers, onRestart, onBack, restartLabel, bac
   );
 }
 
+function ExamQuestionView({ q, onAnswer, flagged, onToggleFlag }) {
+  const multi = isMulti(q);
+  const requiredCount = getRequiredAnswerCount(q);
+  const [selected, setSelected] = useState(multi ? [] : null);
+  const [answered, setAnswered] = useState(false);
+  const [correct, setCorrect] = useState(false);
+
+  useEffect(() => {
+    setSelected(multi ? [] : null);
+    setAnswered(false);
+    setCorrect(false);
+  }, [q.id, multi]);
+
+  const handleSelect = (opt) => {
+    if (answered) return;
+    if (multi) {
+      setSelected(prev => prev.includes(opt) ? prev.filter(x => x !== opt) : [...prev, opt]);
+    } else {
+      setSelected(opt);
+    }
+  };
+
+  const handleSubmit = () => {
+    const isCorrect = checkAnswer(q, multi ? selected : selected);
+    setCorrect(isCorrect);
+    setAnswered(true);
+  };
+
+  const canSubmit = multi ? selected.length === requiredCount : selected !== null;
+
+  const getOptionClass = (opt) => {
+    let base = 'w-full text-left p-3 rounded-lg border-2 transition-all mb-2 white-space-pre-line ';
+    if (!answered) {
+      const isSel = multi ? selected.includes(opt) : selected === opt;
+      return base + (isSel ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-300' : 'border-gray-200 hover:border-gray-300 bg-white');
+    }
+    const optLetter = getOptionLetter(opt);
+    const isCorrectOpt = multi ? q.correctAnswer.includes(optLetter) : optLetter === q.correctAnswer;
+    const isSel = multi ? selected.includes(opt) : selected === opt;
+    if (isCorrectOpt) return base + 'border-green-500 bg-green-50 text-green-800';
+    if (isSel && !isCorrectOpt) return base + 'border-red-500 bg-red-50 text-red-800';
+    return base + 'border-gray-200 bg-white text-gray-400';
+  };
+
+  return (
+    <div className="bg-white rounded-xl shadow-sm p-4 sm:p-6 mb-4">
+      <div className="flex items-start justify-between gap-2 mb-4 flex-wrap">
+        <div className="flex items-start gap-2 flex-wrap">
+          <span className="text-sm font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded">Q{q.id}</span>
+          {multi && <span className="text-xs font-bold text-purple-600 bg-purple-50 px-2 py-1 rounded">{requiredCount}つ選択</span>}
+          {q.year && <span className="text-xs text-gray-400">{q.year}年度</span>}
+        </div>
+        <button onClick={onToggleFlag}
+          className={`text-sm px-2 py-1 rounded transition-all ${flagged ? 'bg-yellow-100 text-yellow-700 border border-yellow-400' : 'bg-gray-100 text-gray-500 hover:bg-yellow-50'}`}>
+          {flagged ? '★ チェック中' : '☆ チェック'}
+        </button>
+      </div>
+      <p className="text-gray-800 mb-4 font-medium white-space-pre-line">{q.question}</p>
+      <div>
+        {q.options.map((opt, i) => (
+          <button key={i} className={getOptionClass(opt)} onClick={() => handleSelect(opt)}>{opt}</button>
+        ))}
+      </div>
+      {!answered && (
+        <>
+          {multi && (
+            <div className="mt-3 text-center text-sm text-gray-500">
+              {selected.length} / {requiredCount} 選択中
+              {selected.length < requiredCount && <span className="ml-2 text-purple-600">（あと{requiredCount - selected.length}つ選んでください）</span>}
+            </div>
+          )}
+          <button onClick={handleSubmit} disabled={!canSubmit}
+            className={`mt-3 w-full py-2.5 rounded-lg font-bold text-white transition-all ${
+              canSubmit ? 'bg-blue-600 hover:bg-blue-700' : 'bg-gray-300 cursor-not-allowed'
+            }`}>解答する</button>
+        </>
+      )}
+      {answered && (
+        <div className="mt-4">
+          <div className={`text-center py-2 rounded-lg font-bold ${correct ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+            {correct ? '正解！' : '不正解'}
+          </div>
+        </div>
+      )}
+      {answered && (
+        <button onClick={() => onAnswer(correct, multi ? selected : selected)}
+          className="mt-4 w-full py-2.5 rounded-lg font-bold text-white bg-blue-600 hover:bg-blue-700 transition-all">
+          次へ
+        </button>
+      )}
+    </div>
+  );
+}
+
+function ZenmonResultScreen({ questions, answers, flaggedIds, onRestart, onBack }) {
+  const [reviewIdx, setReviewIdx] = useState(null);
+  const score = answers.filter(a => a.correct).length;
+  const total = questions.length;
+  const pct = Math.round((score / total) * 100);
+  const pass = pct >= 65;
+
+  const wrongQuestions = questions.filter((q, i) => !answers[i]?.correct);
+  const flaggedQuestions = questions.filter(q => flaggedIds.includes(q.id));
+  const reviewQuestions = [...new Map([...wrongQuestions, ...flaggedQuestions].map(q => [q.id, q])).values()];
+
+  if (reviewIdx !== null && reviewQuestions[reviewIdx]) {
+    const q = reviewQuestions[reviewIdx];
+    const answerData = answers[questions.findIndex(qq => qq.id === q.id)];
+    const isWrong = !answerData?.correct;
+    const isFlagged = flaggedIds.includes(q.id);
+    const multi = isMulti(q);
+
+    return (
+      <div className="bg-white rounded-xl shadow-sm p-4 sm:p-6 mb-4">
+        <div className="flex items-center justify-between mb-4">
+          <span className="text-sm text-gray-500">復習: {reviewIdx + 1} / {reviewQuestions.length}</span>
+          <div className="flex gap-2">
+            {isWrong && <span className="text-xs font-bold text-red-600 bg-red-50 px-2 py-1 rounded">不正解</span>}
+            {isFlagged && <span className="text-xs font-bold text-yellow-600 bg-yellow-50 px-2 py-1 rounded">★ チェック</span>}
+          </div>
+        </div>
+        <div className="flex items-start gap-2 mb-4 flex-wrap">
+          <span className="text-sm font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded">Q{q.id}</span>
+          {multi && <span className="text-xs font-bold text-purple-600 bg-purple-50 px-2 py-1 rounded">{getRequiredAnswerCount(q)}つ選択</span>}
+          {q.year && <span className="text-xs text-gray-400">{q.year}年度</span>}
+        </div>
+        <p className="text-gray-800 mb-4 font-medium white-space-pre-line">{q.question}</p>
+        <div className="mb-4">
+          {q.options.map((opt, i) => {
+            const optLetter = getOptionLetter(opt);
+            const isCorrectOpt = multi ? q.correctAnswer.includes(optLetter) : optLetter === q.correctAnswer;
+            const wasSelected = answerData?.userAnswer && (Array.isArray(answerData.userAnswer)
+              ? answerData.userAnswer.some(s => getOptionLetter(s) === optLetter)
+              : getOptionLetter(answerData.userAnswer) === optLetter);
+            let cls = 'w-full text-left p-3 rounded-lg border-2 mb-2 white-space-pre-line ';
+            if (isCorrectOpt) cls += 'border-green-500 bg-green-50 text-green-800';
+            else if (wasSelected) cls += 'border-red-500 bg-red-50 text-red-800';
+            else cls += 'border-gray-200 bg-white text-gray-400';
+            return <div key={i} className={cls}>{opt} {isCorrectOpt && '✓'}</div>;
+          })}
+        </div>
+        {q.explanation && (
+          <div className="bg-gray-50 border-l-4 border-blue-400 p-3 rounded-r-lg mb-4">
+            <p className="text-sm font-bold text-gray-700 mb-1">解説:</p>
+            <p className="text-sm text-gray-700" style={{ whiteSpace: 'pre-line' }}>{q.explanation}</p>
+          </div>
+        )}
+        <div className="flex gap-3">
+          <button onClick={() => setReviewIdx(null)}
+            className="flex-1 py-2.5 rounded-lg font-bold border-2 border-gray-300 text-gray-600 hover:bg-gray-50">結果に戻る</button>
+          {reviewIdx < reviewQuestions.length - 1 && (
+            <button onClick={() => setReviewIdx(reviewIdx + 1)}
+              className="flex-1 py-2.5 rounded-lg font-bold text-white bg-blue-600 hover:bg-blue-700">次の問題</button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-white rounded-xl shadow-sm p-6 mb-4">
+      <h2 className="text-2xl font-bold text-center mb-4">結果発表</h2>
+      <div className={`text-center text-5xl font-bold mb-2 ${pass ? 'text-green-600' : 'text-red-600'}`}>{pct}%</div>
+      <p className="text-center text-lg mb-1">{score} / {total} 問正解</p>
+      <p className={`text-center font-bold mb-4 ${pass ? 'text-green-600' : 'text-red-600'}`}>
+        {pass ? '合格ライン達成！' : '合格ラインに届きませんでした'}
+      </p>
+      <div className="flex gap-4 justify-center text-sm mb-4">
+        <span className="text-red-600">不正解: <b>{wrongQuestions.length}</b>問</span>
+        <span className="text-yellow-600">チェック: <b>{flaggedQuestions.length}</b>問</span>
+      </div>
+      {reviewQuestions.length > 0 && (
+        <button onClick={() => setReviewIdx(0)}
+          className="w-full py-2.5 rounded-lg font-bold text-white bg-orange-500 hover:bg-orange-600 mb-4">
+          不正解・チェック問題を復習する（{reviewQuestions.length}問）
+        </button>
+      )}
+      <div className="max-h-64 overflow-y-auto mb-4 border rounded-lg">
+        {questions.map((q, i) => {
+          const isWrong = !answers[i]?.correct;
+          const isFlagged = flaggedIds.includes(q.id);
+          return (
+            <div key={i} className={`flex items-center px-3 py-2 text-sm border-b ${isWrong ? 'bg-red-50' : ''}`}>
+              <span className="w-12 font-mono text-gray-500">Q{q.id}</span>
+              <span className={answers[i]?.correct ? 'text-green-600' : 'text-red-600'}>
+                {answers[i]?.correct ? '○' : '×'}
+              </span>
+              {isFlagged && <span className="ml-1 text-yellow-500">★</span>}
+              <span className="ml-2 truncate text-gray-600">{q.question.substring(0,35)}...</span>
+            </div>
+          );
+        })}
+      </div>
+      <div className="flex gap-3">
+        <button onClick={onBack} className="flex-1 py-2.5 rounded-lg font-bold border-2 border-blue-600 text-blue-600 hover:bg-blue-50">問題数選択に戻る</button>
+        <button onClick={onRestart} className="flex-1 py-2.5 rounded-lg font-bold text-white bg-blue-600 hover:bg-blue-700">やり直す</button>
+      </div>
+    </div>
+  );
+}
+
 function ZenmonMode({ mcQuestions }) {
-  const [year, setYear] = useState(null);
+  const [started, setStarted] = useState(false);
+  const [questionCount, setQuestionCount] = useState(null);
+  const [questions, setQuestions] = useState([]);
   const [idx, setIdx] = useState(0);
   const [answers, setAnswers] = useState([]);
+  const [flaggedIds, setFlaggedIds] = useState([]);
   const [done, setDone] = useState(false);
 
-  const questions = useMemo(() => {
-    if (!year) return [];
-    return mcQuestions.filter(q => q.year === year);
-  }, [year, mcQuestions]);
+  const start = (count) => {
+    setQuestionCount(count);
+    setQuestions(shuffle(mcQuestions).slice(0, count));
+    setIdx(0);
+    setAnswers([]);
+    setFlaggedIds([]);
+    setDone(false);
+    setStarted(true);
+  };
 
   const handleAnswer = useCallback((correct, userAnswer) => {
     const q = questions[idx];
@@ -287,36 +496,47 @@ function ZenmonMode({ mcQuestions }) {
     else setIdx(idx + 1);
   }, [idx, questions, answers]);
 
-  if (!year) {
-    const years = [
-      { y: '2023', label: '2023年度', count: mcQuestions.filter(q => q.year === '2023').length },
-      { y: '2024', label: '2024年度', count: mcQuestions.filter(q => q.year === '2024').length },
-      { y: '2025', label: '2025年度', count: mcQuestions.filter(q => q.year === '2025').length },
-    ];
+  const toggleFlag = useCallback(() => {
+    const qId = questions[idx].id;
+    setFlaggedIds(prev => prev.includes(qId) ? prev.filter(id => id !== qId) : [...prev, qId]);
+  }, [questions, idx]);
+
+  if (!started) {
+    const total = mcQuestions.length;
     return (
-      <div className="grid gap-4 sm:grid-cols-3">
-        {years.map(yr => (
-          <button key={yr.y} onClick={() => { setYear(yr.y); setIdx(0); setAnswers([]); setDone(false); }}
-            className="bg-white rounded-xl shadow-sm p-6 hover:shadow-md transition-all text-center border-2 border-transparent hover:border-blue-400">
-            <div className="text-2xl font-bold text-blue-600 mb-1">{yr.label}</div>
-            <div className="text-gray-500">{yr.count}問</div>
-          </button>
-        ))}
+      <div className="bg-white rounded-xl shadow-sm p-6">
+        <h2 className="text-lg font-bold mb-4 text-center">出題数を選択</h2>
+        <p className="text-sm text-gray-500 text-center mb-4">解説なしで連続出題。最後にまとめて復習できます。</p>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {[50, 100, 150, total].map((n, i) => (
+            <button key={n} onClick={() => start(n)}
+              className="py-3 rounded-lg font-bold border-2 border-blue-500 text-blue-600 hover:bg-blue-50 transition-all">
+              {n === total ? `全${total}問` : `${n}問`}
+            </button>
+          ))}
+        </div>
       </div>
     );
   }
 
   if (done) {
-    return <ResultScreen questions={questions} answers={answers}
-      onRestart={() => { setIdx(0); setAnswers([]); setDone(false); }}
-      onBack={() => setYear(null)}
-      restartLabel="やり直す" backLabel="年度選択に戻る" />;
+    return <ZenmonResultScreen
+      questions={questions}
+      answers={answers}
+      flaggedIds={flaggedIds}
+      onRestart={() => start(questionCount)}
+      onBack={() => setStarted(false)} />;
   }
 
   return (
     <div>
       <ProgressBar current={idx + 1} total={questions.length} />
-      <QuestionView key={questions[idx].id} q={questions[idx]} onAnswer={handleAnswer} />
+      <ExamQuestionView
+        key={questions[idx].id}
+        q={questions[idx]}
+        onAnswer={handleAnswer}
+        flagged={flaggedIds.includes(questions[idx].id)}
+        onToggleFlag={toggleFlag} />
     </div>
   );
 }

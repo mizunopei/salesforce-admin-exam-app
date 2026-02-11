@@ -6,6 +6,9 @@
 過去問0_修正済.json
 2024年度_修正済.json
 2025年度_修正済.json
-data/
-build.py
 functions/_middleware.js
+# 元のHTMLファイル（抽出元）
+2023_exam.html
+2024_exam.html
+2025_exam.html
+2025_11_exam.html

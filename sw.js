@@ -1,4 +1,4 @@
-const CACHE_NAME = 'sf-admin-v4';
+const CACHE_NAME = 'sf-admin-v5';
 const PRECACHE = ['./index.html', './data/mc_questions.json', './data/tf_questions.json'];
 
 self.addEventListener('install', e => {

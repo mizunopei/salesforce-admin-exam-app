@@ -1,4 +1,102 @@
-<!DOCTYPE html>
+#!/usr/bin/env python3
+"""Build script for SF Admin Exam App. Generates data/*.json, index.html, manifest.json, sw.js."""
+
+import json
+import os
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+
+def load_json(filename):
+    with open(os.path.join(BASE_DIR, filename), encoding="utf-8") as f:
+        return json.load(f)
+
+
+def build_mc_questions():
+    # 2023年度（再抽出版）
+    q2023 = load_json("2023年度_再抽出.json")["questions"]
+    for q in q2023:
+        q["year"] = "2023"
+
+    # 2024年度（再抽出版）
+    q2024 = load_json("2024年度_再抽出.json")["questions"]
+    for q in q2024:
+        q.setdefault("year", "2024")
+
+    # 2025年度（再抽出版）
+    q2025 = load_json("2025年度_再抽出.json")["questions"]
+    for q in q2025:
+        q.setdefault("year", "2025")
+
+    # 2025年11月版（再抽出版）
+    q2025_11 = load_json("2025_11_再抽出.json")["questions"]
+    for q in q2025_11:
+        q.setdefault("year", "2025-11")
+
+    all_mc = q2023 + q2024 + q2025 + q2025_11
+    for i, q in enumerate(all_mc, 1):
+        q["id"] = i
+        for key in ("question", "options", "correctAnswer", "explanation"):
+            q.setdefault(key, "")
+
+    return all_mc
+
+
+def build_tf_questions():
+    return load_json("一問一答.json")["questions"]
+
+
+def build_manifest():
+    svg_icon = (
+        "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E"
+        "%3Ccircle cx='96' cy='96' r='96' fill='%230176D3'/%3E"
+        "%3Ctext x='96' y='116' text-anchor='middle' font-size='72' font-weight='bold' "
+        "fill='white' font-family='Arial,sans-serif'%3ESF%3C/text%3E%3C/svg%3E"
+    )
+    return json.dumps({
+        "name": "SF Admin 問題集",
+        "short_name": "SF問題集",
+        "start_url": "./index.html",
+        "display": "standalone",
+        "background_color": "#f9fafb",
+        "theme_color": "#0176D3",
+        "icons": [
+            {"src": svg_icon, "sizes": "192x192", "type": "image/svg+xml"},
+            {"src": svg_icon, "sizes": "512x512", "type": "image/svg+xml"},
+        ]
+    }, ensure_ascii=False, indent=2)
+
+
+def build_sw():
+    return """const CACHE_NAME = 'sf-admin-v5';
+const PRECACHE = ['./index.html', './data/mc_questions.json', './data/tf_questions.json'];
+
+self.addEventListener('install', e => {
+  e.waitUntil(caches.open(CACHE_NAME).then(c => c.addAll(PRECACHE)));
+  self.skipWaiting();
+});
+
+self.addEventListener('activate', e => {
+  e.waitUntil(caches.keys().then(keys =>
+    Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
+  ));
+  self.clients.claim();
+});
+
+self.addEventListener('fetch', e => {
+  e.respondWith(
+    fetch(e.request).then(res => {
+      const clone = res.clone();
+      caches.open(CACHE_NAME).then(c => c.put(e.request, clone));
+      return res;
+    }).catch(() => caches.match(e.request))
+  );
+});
+"""
+
+
+def build_html():
+    return r"""<!DOCTYPE html>
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
@@ -601,4 +699,41 @@ if ('serviceWorker' in navigator) {
 }
 </script>
 </body>
-</html>
+</html>"""
+
+
+def main():
+    mc = build_mc_questions()
+    tf = build_tf_questions()
+
+    # Create data/ directory
+    data_dir = os.path.join(BASE_DIR, "data")
+    os.makedirs(data_dir, exist_ok=True)
+
+    # Write JSON data files
+    mc_path = os.path.join(data_dir, "mc_questions.json")
+    with open(mc_path, "w", encoding="utf-8") as f:
+        json.dump(mc, f, ensure_ascii=False, indent=2)
+    print(f"Generated: data/mc_questions.json ({os.path.getsize(mc_path)} bytes)")
+
+    tf_path = os.path.join(data_dir, "tf_questions.json")
+    with open(tf_path, "w", encoding="utf-8") as f:
+        json.dump(tf, f, ensure_ascii=False, indent=2)
+    print(f"Generated: data/tf_questions.json ({os.path.getsize(tf_path)} bytes)")
+
+    # Write HTML, manifest, SW
+    html = build_html()
+    manifest = build_manifest()
+    sw = build_sw()
+
+    for name, content in [("index.html", html), ("manifest.json", manifest), ("sw.js", sw)]:
+        path = os.path.join(BASE_DIR, name)
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(content)
+        print(f"Generated: {name} ({len(content)} bytes)")
+
+    print(f"\nMC questions: {len(mc)}, TF questions: {len(tf)}")
+
+
+if __name__ == "__main__":
+    main()
